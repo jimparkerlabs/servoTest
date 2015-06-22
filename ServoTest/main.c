@@ -77,7 +77,7 @@ int main(void) {
 	DDRD &= ~(1 << PD6);     // set button port to input
 	PORTD |= (1 << PD6);     // enable pull-up resistor
 
-	DDRD &= ~(1 << PD5);     // set servo port to output
+	DDRD |= (1 << PD5);     // set servo port to output
 
 	char serialCharacter;
 
