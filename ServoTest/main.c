@@ -11,7 +11,7 @@
 #include "pinDefines.h"
 #include "USART.h"
 
-#define TIMER_RESOLUTION 80
+#define TIMER_RESOLUTION 100
 
 // button-handling routines
 uint8_t buttonPressed(void) {
@@ -43,9 +43,12 @@ volatile int trainTimer;
 volatile int pulseTimer;
 volatile unsigned long totalTime;
 ISR(TIMER0_COMPA_vect) {
-	if(trainTimer > 0) trainTimer -= TIMER_RESOLUTION;
-	if(pulseTimer > 0) pulseTimer -= TIMER_RESOLUTION;
+	if(trainTimer >= TIMER_RESOLUTION) trainTimer -= TIMER_RESOLUTION;
+	else trainTimer = 0;
+	if(pulseTimer >= TIMER_RESOLUTION) pulseTimer -= TIMER_RESOLUTION;
+	else pulseTimer = 0;
 	totalTime += TIMER_RESOLUTION;
+	//LED_PORT ^= (1 << 0);
 }
 
 int main(void) {
@@ -107,12 +110,16 @@ int main(void) {
 			printString("\r\n");
 		}
 		if (serialCharacter == 'x') {
-			printWord(elapsedSeconds);
+			printWord(trainTimer);
+			printString(" ");
+			printWord(pulseTimer);
+			printString(" ");
+			printWord((uint16_t)totalTime);
 			printString("\r\n");
 		}
 
-		if(pulseTimer == 0) {pulseTimer = pulseWidth; PORTD &= (1 << PD5);}
-		if(trainTimer == 0) {trainTimer = period; PORTD |= (1 << PD5);}
+		if(trainTimer == 0) {trainTimer = period; pulseTimer = pulseWidth; PORTD |= (1 << PD5);}
+		if((pulseTimer == 0) && (PORTD & (1 << PD5))) {PORTD &= ~(1 << PD5);}
 
 		if(totalTime >= 1000000) {
 			totalTime = 0;
