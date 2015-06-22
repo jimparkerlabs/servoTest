@@ -11,6 +11,8 @@
 #include "pinDefines.h"
 #include "USART.h"
 
+#define TIMER_RESOLUTION 80
+
 // button-handling routines
 uint8_t buttonPressed(void) {
 	static uint8_t buttonState;
@@ -39,17 +41,20 @@ uint8_t newButtonPress(void) {
 
 volatile int trainTimer;
 volatile int pulseTimer;
-volatile int totalTime;
+volatile unsigned long totalTime;
 ISR(TIMER0_COMPA_vect) {
-	trainTimer -=10;
-	pulseTimer -=10;
-	totalTime += 10;
+	if(trainTimer > 0) trainTimer -= TIMER_RESOLUTION;
+	if(pulseTimer > 0) pulseTimer -= TIMER_RESOLUTION;
+	totalTime += TIMER_RESOLUTION;
 }
 
 int main(void) {
-	int period = 20000;
-	int pulseWidth = 1500;
-	int testingPulseStep = 10;
+	unsigned int period = 20000;
+	unsigned int pulseWidth = 1500;
+	unsigned int minPulseWidth = 600;
+	unsigned int maxPulseWidth = 2400;
+
+	unsigned int testingPulseStep = TIMER_RESOLUTION;
 
 	// the general idea is to set up a timer to interrupt ever 10 us and count down
 	//  these 2 timers in the ISR.  the main()loop wil check to see when they are 0
@@ -58,18 +63,21 @@ int main(void) {
 	pulseTimer = pulseWidth;
 	totalTime = 0;
 
-	uint16_t elapsedTime = 0;
-	// at 8 Mhz, a prescaler of /8 and a compare value =10 should work.  Although, this might be too
-	// fast for me to process. 80 clock cycles is pretty small...
-	TCCR0A = 0b00000010 ; // ctc mode
-	TCCR0B = 0b00000010 ; // divide by 8
-	TIMSK0 = (1 << OCIE0A) ; // enable interrupt on match
-	OCR0A = 10;
+	uint16_t elapsedSeconds = 0;
+	// I seem to need about 100 clock cycles for the ISR to maintain accurate timing.
+	// at 1 Mhz, that means I anly have about 0.01 ms (100 us) resuolution...
+	// TODO:  figure out TIMER_RESOLUTION based on F_CPU
+	// TODO:  figure out a prescaler / OCR value combination to give me the least power
+	//        consumption for the given TIMER_RESOLUTION
+	TCCR0A = 0b00000010 ;       // ctc mode
+	TCCR0B = 0b00000001 ;       // divide by nothing, so ticks = microseconds
+	TIMSK0 = (1 << OCIE0A) ;    // enable interrupt on match A
+	OCR0A = TIMER_RESOLUTION;   // value to compare
 
-	DDRD &= ~(1 << PD6);    // set button port to input
-	PORTD |= (1 << PD6);  // enable pull-up resistor
+	DDRD &= ~(1 << PD6);     // set button port to input
+	PORTD |= (1 << PD6);     // enable pull-up resistor
 
-	DDRD &= ~(1 << PD5);    // set servo port to output
+	DDRD &= ~(1 << PD5);     // set servo port to output
 
 	char serialCharacter;
 
@@ -84,24 +92,32 @@ int main(void) {
 	sei();
 	while (1) {
 		serialCharacter = getByte();
-		if (serialCharacter == '+') {
+		if (serialCharacter == '+' || serialCharacter == '=') {
 			pulseWidth += testingPulseStep;
-			//printString("new width: %i\r\n", pulseWidth);
+			if (pulseWidth > maxPulseWidth) pulseWidth = maxPulseWidth;
+			printString("new width:");
+			printWord(pulseWidth);
+			printString("\r\n");
 		}
-		if (serialCharacter == '-') {
+		if (serialCharacter == '-' || serialCharacter == '_') {
 			pulseWidth -= testingPulseStep;
-			//printString("new width: %i\r\n", pulseWidth);
+			if (pulseWidth < minPulseWidth) pulseWidth = minPulseWidth;
+			printString("new width:");
+			printWord(pulseWidth);
+			printString("\r\n");
+		}
+		if (serialCharacter == 'x') {
+			printWord(elapsedSeconds);
+			printString("\r\n");
 		}
 
 		if(pulseTimer == 0) {pulseTimer = pulseWidth; PORTD &= (1 << PD5);}
 		if(trainTimer == 0) {trainTimer = period; PORTD |= (1 << PD5);}
 
-		if(totalTime == 1000000) {
+		if(totalTime >= 1000000) {
 			totalTime = 0;
-			elapsedTime += 1;
-			printWord(elapsedTime);
-			printString("\r\n");
-			LED_PORT ^= 0x11111111;  // toggle
+			elapsedSeconds += 1;
+			LED_PORT ^= 0b11111111;  // toggle
 		}
 
 	}
