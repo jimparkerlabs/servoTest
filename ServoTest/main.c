@@ -58,12 +58,13 @@ int main(void) {
 	pulseTimer = pulseWidth;
 	totalTime = 0;
 
-	int elapsedTime = 0;
+	uint16_t elapsedTime = 0;
 	// at 8 Mhz, a prescaler of /8 and a compare value =10 should work.  Although, this might be too
 	// fast for me to process. 80 clock cycles is pretty small...
 	TCCR0A = 0b00000010 ; // ctc mode
 	TCCR0B = 0b00000010 ; // divide by 8
 	TIMSK0 = (1 << OCIE0A) ; // enable interrupt on match
+	OCR0A = 10;
 
 	DDRD &= ~(1 << PD6);    // set button port to input
 	PORTD |= (1 << PD6);  // enable pull-up resistor
@@ -73,7 +74,7 @@ int main(void) {
 	char serialCharacter;
 
 	LED_DDR = 0xff;         // configure LED port
-	LED_PORT = 0b01010101;
+	LED_PORT = 0b00000000;  // all off
 
 	initUSART();
 
@@ -98,7 +99,9 @@ int main(void) {
 		if(totalTime == 1000000) {
 			totalTime = 0;
 			elapsedTime += 1;
-			LED_PORT ^= 0x11111111;
+			printWord(elapsedTime);
+			printString("\r\n");
+			LED_PORT ^= 0x11111111;  // toggle
 		}
 
 	}
